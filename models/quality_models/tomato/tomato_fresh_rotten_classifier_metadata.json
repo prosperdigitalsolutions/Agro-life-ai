@@ -1,0 +1,29 @@
+{
+    "system": "AGRO LIFE-AI",
+    "module": "Tomato Fresh/Rotten Classifier",
+    "experiment": "Binary Visual Classification",
+    "algorithm": "Logistic Regression",
+    "image_width": 64,
+    "image_height": 64,
+    "image_channels": 3,
+    "feature_count": 12288,
+    "usable_image_count": 1600,
+    "fresh_image_count": 814,
+    "rotten_image_count": 786,
+    "skipped_image_count": 0,
+    "classes": {
+        "0": "Fresh",
+        "1": "Rotten"
+    },
+    "dataset": "Tomato_Dataset.v5",
+    "label_format": "YOLO",
+    "normalization": "Pixel values divided by 255.0",
+    "random_state": 42,
+    "max_iter": 1000,
+    "source_classes_preserved": true,
+    "four_stage_decay_relabelling": false,
+    "shelf_life_prediction": false,
+    "food_safety_assessment": false,
+    "created_at": "2026-09-20T14:05:36",
+    "research_note": "The original Fresh/Rotten labels were read from YOLO annotations. Images containing multiple classes were excluded from the binary classification experiment. No four-stage decay relabelling was performed."
+}

@@ -1,0 +1,91 @@
+﻿# Python environments and temporary files
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+
+# Local databases and database backups
+database/*.db
+database/*.db-*
+*.sqlite
+*.sqlite3
+
+# Secrets and local environment configuration
+.env
+.env.*
+!.env.example
+.streamlit/secrets.toml
+
+# Local editor settings
+.vscode/
+
+# Backup copies and diagnostic scripts
+*backup*
+*BACKUP*
+app_before_*.py
+*_before_*.py
+add_dashboard_buttons.py
+add_farmer_logout.py
+add_farmer_sidebar_toggle.py
+check_admin.py
+check_database.py
+check_database_schema.py
+create_camera_table.py
+create_farmer_test_login.py
+diagnose_farmer_login.py
+fix_farmer_sidebar_control.py
+fix_farmer_sidebar_header.py
+generate_farmer_test_password.py
+reset_admin_password.py
+reset_farmer_password.py
+reset_farmer_test_password.py
+setup_customer_presentation_login.py
+setup_farmer_presentation_login.py
+set_sidebar_state.py
+sidebar_test.py
+style_farmer_sidebar_toggle.py
+test_login_diagnostic.py
+test_streamlit.py
+
+# Temporary operating-system files
+Thumbs.db
+.DS_Store
+
+# Temporary project maintenance scripts
+remove_route_user.py
+
+# Local project inventories containing machine-specific paths
+project_files.txt
+project_folders.txt
+project_structure.txt
+
+# External research datasets (preserved locally; not required for normal app startup)
+data/external_datasets/
+
+# Generated prediction outputs and uploaded camera captures
+results/predictions/
+results/reports/
+results/figures/computer_vision/
+
+# Processed image datasets
+data/processed/images/
+
+# Test and temporary artifacts
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Temporary working copies and backup files
+*.bak
+*.working_copy
+
+# Temporary database working copies
+*working_copy
+
+# Local research datasets (preserved locally)
+data/raw/research_dataset/
+data/processed/
+data/sample/
+
+# Generated research and analysis figures
+results/figures/

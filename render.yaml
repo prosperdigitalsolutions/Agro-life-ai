@@ -1,0 +1,17 @@
+﻿services:
+  - type: web
+    name: agro-life-ai
+    runtime: python
+    plan: starter
+    buildCommand: pip install -r requirements.txt
+    startCommand: python scripts/cloud_database_init.py && streamlit run app.py --server.address 0.0.0.0 --server.port $PORT
+    healthCheckPath: /_stcore/health
+    disk:
+      name: agro-life-ai-data
+      mountPath: /var/data
+      sizeGB: 1
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.13.7
+      - key: AGRO_LIFE_AI_DB_PATH
+        value: /var/data/agro_life_ai.db

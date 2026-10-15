@@ -1,0 +1,26 @@
+{
+    "project": "AGRO LIFE-AI",
+    "model_name": "Final Research Shelf-Life Prediction Model",
+    "model_type": "RandomForestRegressor",
+    "purpose": "Research prototype for estimating tomato shelf life from selected Day-4 quality measurements.",
+    "dataset": {
+        "file": "C:\\Users\\PROSPER\\Documents\\PROSPER WORKSPACE\\03 MINI PROJECTS\\AGRO LIFE-AI\\data\\processed\\research_day4_features.csv",
+        "records": 48,
+        "target": "shelf_life_days"
+    },
+    "features": [
+        "weight_loss_day4",
+        "ta_day4"
+    ],
+    "random_forest_settings": {
+        "n_estimators": 200,
+        "random_state": 42,
+        "max_depth": 4,
+        "min_samples_leaf": 2
+    },
+    "feature_importance": {
+        "weight_loss_day4": 0.6154931039962959,
+        "ta_day4": 0.3845068960037041
+    },
+    "validation_note": "The model was selected after GroupKFold comparisons of candidate feature sets. The final model is trained on all available research observations for prototype demonstration. It should not be interpreted as independently validated for commercial deployment."
+}

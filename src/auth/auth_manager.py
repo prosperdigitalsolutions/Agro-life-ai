@@ -16,6 +16,14 @@ import os
 import sqlite3
 from pathlib import Path
 
+from src.database.connection import get_connection, is_postgres
+
+try:
+    import psycopg
+    INTEGRITY_ERRORS = (sqlite3.IntegrityError, psycopg.IntegrityError)
+except ImportError:
+    INTEGRITY_ERRORS = (sqlite3.IntegrityError,)
+
 try:
     import streamlit as st
 except ImportError:  # pragma: no cover
@@ -23,25 +31,44 @@ except ImportError:  # pragma: no cover
 
 
 # ============================================================
-# DATABASE PATH
-# ============================================================
-
-PROJECT_ROOT = Path(__file__).resolve().parents[2]
-
-DATABASE_PATH = Path(os.environ.get("AGRO_LIFE_AI_DB_PATH", str(PROJECT_ROOT / "database" / "agro_life_ai.db")))
-
-
-# ============================================================
 # DATABASE CONNECTION
 # ============================================================
 
+class _AuthCursor:
+    """Translate authentication SQL placeholders for PostgreSQL."""
+
+    def __init__(self, cursor, postgres):
+        self._cursor = cursor
+        self._postgres = postgres
+
+    def execute(self, sql, parameters=None):
+        if self._postgres:
+            sql = sql.replace("?", "%s")
+        if parameters is None:
+            return self._cursor.execute(sql)
+        return self._cursor.execute(sql, parameters)
+
+    def __getattr__(self, name):
+        return getattr(self._cursor, name)
+
+
+class _AuthConnection:
+    """Expose a small compatible connection interface to authentication."""
+
+    def __init__(self, connection, postgres):
+        self._connection = connection
+        self._postgres = postgres
+
+    def cursor(self):
+        return _AuthCursor(self._connection.cursor(), self._postgres)
+
+    def __getattr__(self, name):
+        return getattr(self._connection, name)
+
+
 def get_auth_connection():
-    """
-    Create a database connection for authentication operations.
-    """
-    connection = sqlite3.connect(DATABASE_PATH)
-    connection.row_factory = sqlite3.Row
-    return connection
+    """Connect to Neon PostgreSQL or the local SQLite database."""
+    return _AuthConnection(get_connection(), is_postgres())
 
 
 # ============================================================
@@ -52,6 +79,11 @@ def create_auth_table():
     """
     Create the user_credentials table if it does not exist.
     """
+
+    # PostgreSQL credentials were created during migration.
+    # Never attempt SQLite-specific AUTOINCREMENT DDL against Neon.
+    if is_postgres():
+        return
 
     connection = get_auth_connection()
 
@@ -186,7 +218,7 @@ def create_user_credentials(
 
         return True, "Credentials created successfully."
 
-    except sqlite3.IntegrityError as error:
+    except INTEGRITY_ERRORS as error:
         connection.rollback()
         return False, f"Could not create credentials: {error}"
 

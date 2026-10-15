@@ -11,6 +11,9 @@ import sqlite3
 from pathlib import Path
 from typing import Optional
 
+from src.database.connection import is_postgres
+from src.database.db_compat import get_compatible_connection
+
 
 # ============================================================
 # PROJECT PATH
@@ -26,26 +29,27 @@ DATABASE_PATH = Path(os.environ.get("AGRO_LIFE_AI_DB_PATH", str(PROJECT_ROOT / "
 # ============================================================
 
 def get_connection():
-    conn = sqlite3.connect(DATABASE_PATH)
-    conn.row_factory = sqlite3.Row
-    conn.execute("PRAGMA foreign_keys = ON")
+    conn = get_compatible_connection()
 
-    conn.execute(
-        """
-        CREATE TABLE IF NOT EXISTS batch_research_measurements (
-            measurement_id INTEGER PRIMARY KEY AUTOINCREMENT,
-            batch_id INTEGER NOT NULL,
-            day_number INTEGER NOT NULL,
-            weight_loss_percent REAL NOT NULL,
-            titratable_acidity REAL NOT NULL,
-            recorded_at TEXT DEFAULT CURRENT_TIMESTAMP,
-            FOREIGN KEY (batch_id)
-                REFERENCES produce_batches(batch_id)
+    if not is_postgres():
+        conn.row_factory = sqlite3.Row
+        conn.execute("PRAGMA foreign_keys = ON")
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS batch_research_measurements (
+                measurement_id INTEGER PRIMARY KEY AUTOINCREMENT,
+                batch_id INTEGER NOT NULL,
+                day_number INTEGER NOT NULL,
+                weight_loss_percent REAL NOT NULL,
+                titratable_acidity REAL NOT NULL,
+                recorded_at TEXT DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (batch_id)
+                    REFERENCES produce_batches(batch_id)
+            )
+            """
         )
-        """
-    )
+        conn.commit()
 
-    conn.commit()
     return conn
 
 def add_batch_research_measurement(
@@ -149,23 +153,25 @@ def get_batch_research_measurements(batch_id: int):
 
     finally:
         conn.close()
-try:
-    connection = get_connection()
-    connection.execute(
-        """
-        ALTER TABLE market_listings
-        ADD COLUMN buyer_id INTEGER
-        REFERENCES buyers(buyer_id)
-        """
-    )
-    connection.commit()
-    connection.close()
+if not is_postgres():
+    try:
+        connection = get_connection()
+        try:
+            connection.execute(
+                """
+                ALTER TABLE market_listings
+                ADD COLUMN buyer_id INTEGER
+                REFERENCES buyers(buyer_id)
+                """
+            )
+            connection.commit()
+        finally:
+            connection.close()
 
-except sqlite3.OperationalError as e:
-
-    # Column already exists
-    if "duplicate column name" not in str(e).lower():
-        raise
+    except sqlite3.OperationalError as e:
+        # Column already exists in the local SQLite database.
+        if "duplicate column name" not in str(e).lower():
+            raise
 # ============================================================
 # USER MANAGEMENT
 # ============================================================

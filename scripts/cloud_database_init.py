@@ -333,6 +333,23 @@ def initialize_database():
         print(f"Tables defined: {len(SCHEMA)}")
         print("Schema migrations completed successfully.")
 
+        user_count = connection.execute(
+            "SELECT COUNT(*) FROM users"
+        ).fetchone()[0]
+
+        credential_count = connection.execute(
+            "SELECT COUNT(*) FROM user_credentials"
+        ).fetchone()[0]
+
+        active_credential_count = connection.execute(
+            "SELECT COUNT(*) FROM user_credentials WHERE is_active = 1"
+        ).fetchone()[0]
+
+        print(f"Login diagnostic - users: {user_count}")
+        print(f"Login diagnostic - credentials: {credential_count}")
+        print(f"Login diagnostic - active credentials: {active_credential_count}")
+
+
     except Exception:
         connection.rollback()
         raise

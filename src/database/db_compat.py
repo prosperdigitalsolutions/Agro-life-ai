@@ -62,14 +62,13 @@ class CompatibleCursor:
             sql = sql.replace("?", "%s")
 
             match = re.match(
-                r"\\s*INSERT\\s+INTO\\s+"
-                r"(?:(?:public)\\s*\\.\\s*)?"
-                r"[\\\"`]?([a-zA-Z_][a-zA-Z0-9_]*)[\\\"`]?",
+                r"\s*INSERT\s+INTO\s+"
+                r"(?:(?:public)\s*\.\s*)?"
+                r'["`]?([a-zA-Z_][a-zA-Z0-9_]*)["`]?',
                 sql,
                 re.IGNORECASE,
             )
-
-            if match and not re.search(r"\\bRETURNING\\b", sql, re.IGNORECASE):
+            if match and not re.search(r"\bRETURNING\b", sql, re.IGNORECASE):
                 table = match.group(1).lower()
                 primary_key = self.PRIMARY_KEYS.get(table)
 

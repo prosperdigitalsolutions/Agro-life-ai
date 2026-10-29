@@ -14,6 +14,13 @@ import hashlib
 import secrets
 import os
 import sqlite3
+
+from argon2 import PasswordHasher
+from argon2.exceptions import (
+    InvalidHashError,
+    VerificationError,
+    VerifyMismatchError,
+)
 from pathlib import Path
 
 from src.database.connection import get_connection, is_postgres
@@ -28,6 +35,9 @@ try:
     import streamlit as st
 except ImportError:  # pragma: no cover
     st = None
+
+
+_PASSWORD_HASHER = PasswordHasher()
 
 
 # ============================================================
@@ -119,20 +129,16 @@ def create_auth_table():
 
 def hash_password(password, salt=None):
     """
-    Hash a password using SHA-256 with a random salt.
+    Hash a new password with Argon2id.
 
-    Returns:
-        tuple: (password_hash, salt)
+    The optional salt argument is retained for compatibility with
+    existing callers. Argon2 manages its own salt internally.
     """
+    if not isinstance(password, str) or not password:
+        raise ValueError("Password must be a non-empty string.")
 
-    if salt is None:
-        salt = secrets.token_hex(16)
-
-    password_hash = hashlib.sha256(
-        (salt + password).encode("utf-8")
-    ).hexdigest()
-
-    return password_hash, salt
+    encoded_hash = _PASSWORD_HASHER.hash(password)
+    return encoded_hash, "argon2id"
 
 
 # ============================================================
@@ -140,19 +146,25 @@ def hash_password(password, salt=None):
 # ============================================================
 
 def verify_password(password, stored_hash, stored_salt):
-    """
-    Verify a password against its stored hash and salt.
-    """
+    """Verify Argon2id hashes and legacy salted SHA-256 hashes."""
+    if not isinstance(password, str) or not isinstance(stored_hash, str):
+        return False
 
-    password_hash, _ = hash_password(
-        password,
-        stored_salt
-    )
+    if stored_hash.startswith("$argon2"):
+        try:
+            return _PASSWORD_HASHER.verify(stored_hash, password)
+        except (VerifyMismatchError, VerificationError, InvalidHashError):
+            return False
 
-    return secrets.compare_digest(
-        password_hash,
-        stored_hash
-    )
+    # Legacy SHA-256 verification for existing accounts.
+    if not isinstance(stored_salt, str) or not stored_salt:
+        return False
+
+    legacy_hash = hashlib.sha256(
+        (stored_salt + password).encode("utf-8")
+    ).hexdigest()
+
+    return secrets.compare_digest(legacy_hash, stored_hash)
 
 
 # ============================================================
@@ -227,6 +239,93 @@ def create_user_credentials(
 
 
 # ============================================================
+# SELF-SERVICE PASSWORD CHANGE
+# ============================================================
+
+def change_user_password(user_id, current_password, new_password):
+    """
+    Change the password belonging to the specified authenticated user.
+
+    The current password must be verified before the stored password
+    can be replaced. New passwords are stored using Argon2id.
+    """
+    if not user_id:
+        return False, "A valid user account is required."
+
+    if not isinstance(current_password, str) or not current_password:
+        return False, "Enter your current password."
+
+    if not isinstance(new_password, str) or len(new_password) < 8:
+        return False, "The new password must contain at least 8 characters."
+
+    if len(new_password) > 1024:
+        return False, "The new password is too long."
+
+    connection = get_auth_connection()
+
+    try:
+        cursor = connection.cursor()
+
+        cursor.execute(
+            """
+            SELECT credential_id, password_hash, password_salt, is_active
+            FROM user_credentials
+            WHERE user_id = ?
+            """,
+            (user_id,),
+        )
+
+        credential = cursor.fetchone()
+
+        if credential is None or not credential["is_active"]:
+            return False, "Active login credentials were not found."
+
+        if not verify_password(
+            current_password,
+            credential["password_hash"],
+            credential["password_salt"],
+        ):
+            return False, "The current password is incorrect."
+
+        if verify_password(
+            new_password,
+            credential["password_hash"],
+            credential["password_salt"],
+        ):
+            return False, "Choose a password different from your current password."
+
+        new_hash, new_salt = hash_password(new_password)
+
+        cursor.execute(
+            """
+            UPDATE user_credentials
+            SET password_hash = ?, password_salt = ?
+            WHERE credential_id = ? AND user_id = ?
+            """,
+            (
+                new_hash,
+                new_salt,
+                credential["credential_id"],
+                user_id,
+            ),
+        )
+
+        if cursor.rowcount != 1:
+            connection.rollback()
+            return False, "The password could not be updated. Please try again."
+
+        connection.commit()
+        return True, "Your password has been changed successfully."
+
+    except Exception:
+        connection.rollback()
+        return False, "The password could not be changed. Please try again."
+
+    finally:
+        connection.close()
+
+
+# ============================================================
 # LOGIN VERIFICATION
 # ============================================================
 
@@ -287,6 +386,36 @@ def authenticate_user(username, password):
             user["password_salt"]
         ):
             return None
+
+        # Upgrade legacy SHA-256 hashes after successful authentication.
+        # Existing Argon2id hashes are left unchanged.
+        stored_hash = user["password_hash"]
+
+        if isinstance(stored_hash, str) and not stored_hash.startswith("$argon2"):
+            try:
+                upgraded_hash, upgraded_salt = hash_password(password)
+
+                cursor.execute(
+                    """
+                    UPDATE user_credentials
+                    SET password_hash = ?, password_salt = ?
+                    WHERE credential_id = ?
+                    """,
+                    (
+                        upgraded_hash,
+                        upgraded_salt,
+                        user["credential_id"],
+                    ),
+                )
+                connection.commit()
+
+            except Exception:
+                # Do not lock out a valid user if hash migration fails.
+                # Roll back the failed migration before returning the user.
+                try:
+                    connection.rollback()
+                except Exception:
+                    pass
 
         return {
             "credential_id": user["credential_id"],

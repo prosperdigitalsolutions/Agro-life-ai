@@ -331,16 +331,10 @@ logo_path = os.path.join(
 
 
 # ============================================================
-# LOAD SYSTEM DATA
+# SYSTEM DATA
 # ============================================================
-
-farmers = get_all_farmers()
-buyers = get_all_buyers()
-produce = get_all_produce()
-predictions = get_all_predictions()
-history = get_all_prediction_history()
-recommendations = get_all_recommendations()
-marketplace = get_marketplace_statistics()
+# Data loading will be placed inside the relevant page sections
+# so unrelated database queries do not run on every page rerun.
 
 
 # ============================================================
@@ -515,6 +509,14 @@ st.divider()
 # ============================================================
 
 if page == "Dashboard":
+    farmers = get_all_farmers()
+    buyers = get_all_buyers()
+    produce = get_all_produce()
+    predictions = get_all_predictions()
+    history = get_all_prediction_history()
+    recommendations = get_all_recommendations()
+    marketplace = get_marketplace_statistics()
+
 
     # --------------------------------------------------------
     # WELCOME
@@ -653,6 +655,9 @@ if page == "Dashboard":
 # ============================================================
 
 elif page == "Farmers":
+    farmers = get_all_farmers()
+    produce = get_all_produce()
+
 
     # --------------------------------------------------------
     # PAGE HEADER
@@ -1314,6 +1319,8 @@ elif page == "Farmers":
 # ============================================================
 
 elif page == "Buyers":
+    buyers = get_all_buyers()
+
 
     st.header("Buyer Management")
 
@@ -1426,6 +1433,8 @@ elif page == "Buyers":
 # ============================================================
 
 elif page == "Produce":
+    produce = get_all_produce()
+
 
     st.title("Produce Management")
 
@@ -1631,6 +1640,10 @@ elif page == "Produce":
 # ============================================================
 
 elif page == "Predictions":
+    predictions = get_all_predictions()
+    history = get_all_prediction_history()
+    recommendations = get_all_recommendations()
+
 
     st.header("AI Predictions")
 
@@ -1768,6 +1781,8 @@ elif page == "Predictions":
 # ============================================================
 
 elif page == "Marketplace":
+    marketplace = get_marketplace_statistics()
+
 
     st.header("Marketplace Administration")
 

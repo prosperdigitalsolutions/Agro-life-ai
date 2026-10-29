@@ -3,7 +3,7 @@ from pathlib import Path
 
 import streamlit as st
 
-from src.auth.auth_manager import authenticate_user
+from src.auth.auth_manager import authenticate_user, change_user_password
 
 
 # ============================================================
@@ -422,6 +422,84 @@ def login_page():
 
 
 # ============================================================
+# ============================================================
+# SELF-SERVICE PASSWORD MANAGEMENT
+# ============================================================
+
+def change_password_page():
+    """Allow an authenticated user to change their own password."""
+
+    user = st.session_state.get("user")
+
+    if not st.session_state.get("authenticated") or not isinstance(user, dict):
+        st.error("Please sign in to manage your password.")
+        return
+
+    user_id = user.get("user_id")
+
+    if not user_id:
+        st.error("Your account session is invalid. Please sign in again.")
+        return
+
+    st.title("My Account")
+    st.subheader("Change Password")
+    st.caption("Update the password for your own AGRO LIFE-AI account.")
+
+    with st.form("change_password_form", clear_on_submit=True):
+        current_password = st.text_input(
+            "Current password",
+            type="password",
+            autocomplete="current-password",
+        )
+
+        new_password = st.text_input(
+            "New password",
+            type="password",
+            help="Use at least 8 characters. A longer, unique password is recommended.",
+            autocomplete="new-password",
+        )
+
+        confirm_password = st.text_input(
+            "Confirm new password",
+            type="password",
+            autocomplete="new-password",
+        )
+
+        submitted = st.form_submit_button(
+            "Update Password",
+            type="primary",
+            use_container_width=True,
+        )
+
+    if submitted:
+        if not current_password or not new_password or not confirm_password:
+            st.error("Complete all three password fields.")
+            return
+
+        if new_password != confirm_password:
+            st.error("The new passwords do not match.")
+            return
+
+        if len(new_password) < 8:
+            st.error("Your new password must contain at least 8 characters.")
+            return
+
+        if len(new_password) > 1024:
+            st.error("Your new password is too long.")
+            return
+
+        success, message = change_user_password(
+            user_id,
+            current_password,
+            new_password,
+        )
+
+        if success:
+            st.success(message)
+        else:
+            st.error(message)
+
+
 # ROLE-BASED NAVIGATION
 # ============================================================
 
@@ -474,12 +552,28 @@ else:
         st.stop()
 
 
+# Add the account page without replacing the role-specific dashboard.
+password_page = st.Page(
+    change_password_page,
+    title="My Account",
+    url_path="my-account",
+)
+
+if st.session_state.get("authenticated") and st.session_state.get("user"):
+    st.sidebar.divider()
+    st.sidebar.page_link(
+        password_page,
+        label="My Account / Change Password",
+        icon=":material/lock_reset:",
+    )
+
+
 # ============================================================
 # RUN APPLICATION
 # ============================================================
 
 navigation = st.navigation(
-    [page],
+    [page, password_page],
     position="hidden",
 )
 

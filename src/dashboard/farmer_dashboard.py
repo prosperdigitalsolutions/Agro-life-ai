@@ -1,4 +1,4 @@
-import os
+﻿import os
 import base64
 import streamlit as st
 import sys
@@ -6,7 +6,7 @@ import sys
 from abc import ABC, abstractmethod
 from pathlib import Path
 from textwrap import dedent
-from src.auth.auth_manager import has_role, logout_user
+from src.auth.auth_manager import has_role, logout_user, change_user_password
 from src.core.user_prediction_workflow import (
     run_farmer_batch_prediction_workflow,
 )
@@ -166,7 +166,7 @@ st.markdown(
     <style>
 
     /* =========================================================
-       AGRO LIFE-AI — REFERENCE DASHBOARD THEME
+       AGRO LIFE-AI â€” REFERENCE DASHBOARD THEME
        ========================================================= */
 
     #MainMenu {
@@ -609,6 +609,7 @@ with st.sidebar:
             "Predictions",
             "Market Listings",
             "Buyer Management",
+            "My Account",
         ],
         label_visibility="collapsed",
         key="farmer_navigation",
@@ -696,7 +697,7 @@ with col2:
 
 st.divider()
 # ============================================================
-# PAGE 1 — DASHBOARD
+# PAGE 1 â€” DASHBOARD
 # ============================================================
 if page == "Dashboard":
 
@@ -742,7 +743,7 @@ if page == "Dashboard":
     st.markdown(
     """
     <div class="section-title">
-        👤 Farmer Profile
+        ðŸ‘¤ Farmer Profile
         <div class="section-line"></div>
     </div>
     """,
@@ -1010,7 +1011,7 @@ if page == "Dashboard":
                     <div class="card-label">STORAGE CONDITIONS</div>
                     <p>
                         Temperature:
-                        <strong>{storage["temperature_c"]:.1f} °C</strong>
+                        <strong>{storage["temperature_c"]:.1f} Â°C</strong>
                     </p>
                     <p>
                         Humidity:
@@ -1125,7 +1126,7 @@ if page == "Dashboard":
             "No recommendation is currently available for this farmer."
         )
 # ============================================================
-# PAGE 2 — PRODUCE BATCHES
+# PAGE 2 â€” PRODUCE BATCHES
 # ============================================================
 
 elif page == "Produce Batches":
@@ -1477,7 +1478,7 @@ elif page == "Produce Batches":
 
                         st.rerun()           
 # ============================================================
-# PAGE 3 — QUALITY RECORDS
+# PAGE 3 â€” QUALITY RECORDS
 # ============================================================
 
 elif page == "Quality Records":
@@ -1530,7 +1531,7 @@ elif page == "Quality Records":
             with col1:
 
                 quality_score = st.number_input(
-                    "Quality Score (0–10)",
+                    "Quality Score (0â€“10)",
                     min_value=0.0,
                     max_value=10.0,
                     value=8.5,
@@ -1655,7 +1656,7 @@ elif page == "Quality Records":
                         )
 
 # ============================================================
-# PAGE 4 — STORAGE
+# PAGE 4 â€” STORAGE
 # ============================================================
 
 elif page == "Storage":
@@ -1708,7 +1709,7 @@ elif page == "Storage":
             with col1:
 
                 temperature_c = st.number_input(
-                    "Temperature (°C)",
+                    "Temperature (Â°C)",
                     min_value=-20.0,
                     max_value=60.0,
                     value=28.0,
@@ -1796,7 +1797,7 @@ elif page == "Storage":
 
                         st.write(
                             f"**Temperature:** "
-                            f"{record['temperature_c']:.1f} °C"
+                            f"{record['temperature_c']:.1f} Â°C"
                         )
 
                     with col2:
@@ -1819,7 +1820,7 @@ elif page == "Storage":
                         )
 
 # ============================================================
-# PAGE 5 — PREDICTIONS
+# PAGE 5 â€” PREDICTIONS
 # ============================================================
 
 elif page == "Predictions":
@@ -2115,11 +2116,11 @@ elif page == "Predictions":
                 )
 
                 st.write(
-                    "• Day-4 Weight Loss (%)"
+                    "â€¢ Day-4 Weight Loss (%)"
                 )
 
                 st.write(
-                    "• Day-4 Titratable Acidity"
+                    "â€¢ Day-4 Titratable Acidity"
                 )
 
                 st.info(
@@ -2128,7 +2129,7 @@ elif page == "Predictions":
                     "shelf-life prediction."
                 )
 # ============================================================
-# PAGE 6 — MARKET LISTINGS
+# PAGE 6 â€” MARKET LISTINGS
 # ============================================================
 
 elif page == "Market Listings":
@@ -2362,7 +2363,7 @@ elif page == "Market Listings":
                         )
 
 # ============================================================
-# PAGE 7 — BUYER MANAGEMENT
+# PAGE 7 â€” BUYER MANAGEMENT
 # ============================================================
 
 elif page == "Buyer Management":
@@ -2575,3 +2576,75 @@ elif page == "Buyer Management":
                 st.error(
                     f"Failed to assign buyer: {e}"
                 )        
+
+
+
+
+# ============================================================
+# MY ACCOUNT — CHANGE PASSWORD
+# ============================================================
+
+elif page == "My Account":
+
+    st.title("My Account")
+    st.write("Manage your account security and change your password.")
+
+    st.divider()
+
+    st.subheader("Change Password")
+
+    with st.form("farmer_change_password_form", clear_on_submit=False):
+
+        current_password = st.text_input(
+            "Current Password",
+            type="password",
+            key="farmer_current_password",
+        )
+
+        new_password = st.text_input(
+            "New Password",
+            type="password",
+            key="farmer_new_password",
+        )
+
+        confirm_password = st.text_input(
+            "Confirm New Password",
+            type="password",
+            key="farmer_confirm_password",
+        )
+
+        submitted = st.form_submit_button(
+            "Change Password",
+            type="primary",
+            use_container_width=True,
+        )
+
+    if submitted:
+
+        if not current_password:
+            st.error("Please enter your current password.")
+
+        elif not new_password:
+            st.error("Please enter a new password.")
+
+        elif len(new_password) < 8:
+            st.error("Your new password must contain at least 8 characters.")
+
+        elif len(new_password) > 1024:
+            st.error("Your new password is too long.")
+
+        elif new_password != confirm_password:
+            st.error("The new passwords do not match.")
+
+        else:
+            success, message = change_user_password(
+                logged_in_user_id,
+                current_password,
+                new_password,
+            )
+
+            if success:
+                st.success(message)
+                st.info("Your new password will be required the next time you sign in.")
+            else:
+                st.error(message)

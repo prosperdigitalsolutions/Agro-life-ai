@@ -8,6 +8,7 @@ Falls back to local SQLite for development.
 
 import os
 import sqlite3
+import threading
 from pathlib import Path
 
 from dotenv import load_dotenv
@@ -33,22 +34,93 @@ def is_postgres():
     return DATABASE_URL.startswith(("postgresql://", "postgres://"))
 
 
+_POSTGRES_POOL = None
+_POSTGRES_POOL_LOCK = threading.Lock()
+
+
+class _PooledConnectionLease:
+    """Return a PostgreSQL connection to its pool when closed."""
+
+    def __init__(self, pool, connection):
+        self._pool = pool
+        self._connection = connection
+        self._returned = False
+        self._lock = threading.Lock()
+
+    def close(self):
+        with self._lock:
+            if self._returned:
+                return
+
+            try:
+                if not self._connection.closed and self._connection.info.transaction_status != 0:
+                    self._connection.rollback()
+            finally:
+                self._returned = True
+                self._pool.putconn(self._connection)
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc_value, traceback):
+        try:
+            if exc_type is None:
+                self._connection.commit()
+            else:
+                self._connection.rollback()
+        finally:
+            self.close()
+        return False
+
+    def __getattr__(self, name):
+        return getattr(self._connection, name)
+
+
+def _get_postgres_pool():
+    """Create the shared PostgreSQL connection pool once per process."""
+    global _POSTGRES_POOL
+
+    if _POSTGRES_POOL is None:
+        with _POSTGRES_POOL_LOCK:
+            if _POSTGRES_POOL is None:
+                from psycopg.rows import dict_row
+                from psycopg_pool import ConnectionPool
+
+                _POSTGRES_POOL = ConnectionPool(
+                    conninfo=DATABASE_URL,
+                    kwargs={
+                        "row_factory": dict_row,
+                        "connect_timeout": 10,
+                    },
+                    min_size=1,
+                    max_size=5,
+                    timeout=10,
+                    open=True,
+                )
+
+    return _POSTGRES_POOL
+
+
+def close_postgres_pool():
+    """Close the shared PostgreSQL pool during application shutdown."""
+    global _POSTGRES_POOL
+
+    with _POSTGRES_POOL_LOCK:
+        if _POSTGRES_POOL is not None:
+            _POSTGRES_POOL.close()
+            _POSTGRES_POOL = None
+
+
 def get_connection():
     """
     Open a connection to the configured database.
 
-    PostgreSQL connections use dictionary-style rows.
-    SQLite remains the local fallback.
+    PostgreSQL connections are borrowed from a shared pool and returned
+    when closed. SQLite remains the local development fallback.
     """
     if is_postgres():
-        import psycopg
-        from psycopg.rows import dict_row
-
-        return psycopg.connect(
-            DATABASE_URL,
-            row_factory=dict_row,
-            connect_timeout=10,
-        )
+        pool = _get_postgres_pool()
+        return _PooledConnectionLease(pool, pool.getconn())
 
     DATABASE_PATH.parent.mkdir(parents=True, exist_ok=True)
 

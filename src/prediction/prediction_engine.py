@@ -1,4 +1,4 @@
-"""
+﻿"""
 AGRO LIFE-AI
 Prediction Engine
 """
@@ -46,6 +46,7 @@ PROJECT_ROOT = Path(__file__).resolve().parents[2]
 SUPPORTED_INPUT_METHODS = {
     "manual",
     "camera",
+    "research",
 }
 
 
@@ -193,7 +194,7 @@ def run_prediction(
 
     if input_method not in SUPPORTED_INPUT_METHODS:
         raise ValueError(
-            "Input method must be 'manual' or 'camera'."
+            "Input method must be 'manual', 'camera' or 'research'."
         )
 
     # --------------------------------------------------------

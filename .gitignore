@@ -91,3 +91,7 @@ data/sample/
 results/figures/
 .neon
 node_modules/
+
+# Additional backup files
+AUTH_MANAGER_PRE_ARGON2_*/
+*_before_*.txt

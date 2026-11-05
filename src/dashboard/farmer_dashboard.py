@@ -12,8 +12,11 @@ from src.core.user_prediction_workflow import (
 )
 
 from src.database.database_manager import (
+    add_batch_research_measurement,
     get_batch_research_measurements,
 )
+
+from src.records.history_manager import get_prediction_history
 
 
 class markdown(ABC):
@@ -607,6 +610,7 @@ with st.sidebar:
             "Quality Records",
             "Storage",
             "Predictions",
+            "Prediction History",
             "Market Listings",
             "Buyer Management",
             "My Account",
@@ -1476,7 +1480,7 @@ elif page == "Produce Batches":
                             f"confirm_delete_{batch['batch_id']}"
                         ] = False
 
-                        st.rerun()           
+                        st.rerun()
 # ============================================================
 # PAGE 3 â€” QUALITY RECORDS
 # ============================================================
@@ -1819,6 +1823,109 @@ elif page == "Storage":
                             f"{record['recorded_at']}"
                         )
 
+        st.divider()
+
+        # ----------------------------------------------------
+        # RESEARCH MEASUREMENTS
+        # ----------------------------------------------------
+
+        st.subheader("Research Measurements")
+
+        st.write(
+            "Record measured produce weight loss and titratable "
+            "acidity for each monitoring day."
+        )
+
+        st.warning(
+            "Enter actual research measurements only. "
+            "Do not use estimated or invented values as measured data."
+        )
+
+        research_records = get_batch_research_measurements(
+            selected_batch_id
+        )
+
+        if research_records:
+            st.write("**Recorded Research Measurements**")
+
+            st.dataframe(
+                research_records,
+                use_container_width=True,
+                hide_index=True,
+            )
+        else:
+            st.info(
+                "No research measurements have been recorded "
+                "for this batch yet."
+            )
+
+        with st.form("add_research_measurement_form"):
+
+            research_day = st.number_input(
+                "Monitoring Day",
+                min_value=0,
+                max_value=365,
+                value=4,
+                step=1,
+            )
+
+            weight_loss_text = st.text_input(
+                "Weight Loss (%)",
+                value="",
+                placeholder="Enter measured weight loss",
+                help="Enter the actual measured weight-loss percentage.",
+            )
+
+            acidity_text = st.text_input(
+                "Titratable Acidity",
+                value="",
+                placeholder="Enter measured titratable acidity",
+                help="Enter the actual measured acidity using your research method.",
+            )
+
+            save_research = st.form_submit_button(
+                "Save Research Measurements",
+                type="primary",
+            )
+
+        if save_research:
+            try:
+                if not weight_loss_text.strip() or not acidity_text.strip():
+                    st.error(
+                        "Enter both measured values before saving. "
+                        "Leave the form unsaved until actual measurements "
+                        "are available."
+                    )
+                else:
+                    weight_loss = float(weight_loss_text.strip())
+                    titratable_acidity = float(acidity_text.strip())
+
+                    if not 0 <= weight_loss <= 100:
+                        st.error("Weight Loss must be between 0% and 100%.")
+                    elif titratable_acidity < 0:
+                        st.error("Titratable Acidity cannot be negative.")
+                    else:
+                        measurement_id = add_batch_research_measurement(
+                            batch_id=selected_batch_id,
+                            day_number=int(research_day),
+                            weight_loss_percent=weight_loss,
+                            titratable_acidity=titratable_acidity,
+                        )
+
+                        st.success(
+                            f"Research measurement #{measurement_id} saved."
+                        )
+                        st.rerun()
+
+            except ValueError as e:
+                st.error(
+                    f"Invalid measurement or duplicate record: {e}"
+                )
+            except Exception as e:
+                st.error(
+                    f"Research measurement could not be saved: {e}"
+                )
+
 # ============================================================
 # PAGE 5 â€” PREDICTIONS
 # ============================================================
@@ -2021,116 +2128,183 @@ elif page == "Predictions":
         ]
 
                # ------------------------------------------------
-        # NO EXISTING PREDICTION
+        # ------------------------------------------------
+        # GENERATE OR REGENERATE SHELF-LIFE PREDICTION
         # ------------------------------------------------
 
-        if not batch_predictions:
+        st.subheader("Generate Shelf-Life Prediction")
 
-            st.subheader("Generate Shelf-Life Prediction")
+        st.write(
+            f"**Produce:** "
+            f"{selected_batch['produce_name']}"
+        )
 
-            st.write(
-                f"**Produce:** "
-                f"{selected_batch['produce_name']}"
+        st.write(
+            f"**Batch:** "
+            f"#{selected_batch['batch_id']}"
+        )
+
+        if batch_predictions:
+            st.info(
+                "A prediction already exists for this batch. "
+                "You can generate a new prediction below. "
+                "Existing predictions and history will be retained."
             )
-
-            st.write(
-                f"**Batch:** "
-                f"#{selected_batch['batch_id']}"
-            )
-
+        else:
             st.info(
                 "No shelf-life prediction exists for this batch yet."
             )
 
-            # ------------------------------------------------
-            # DAY-4 RESEARCH DATA AVAILABLE
-            # ------------------------------------------------
+        # ------------------------------------------------
+        # CHECK DAY-4 RESEARCH DATA
+        # ------------------------------------------------
 
-            if day4_records:
+        if day4_records:
 
-                latest_day4 = day4_records[-1]
+            latest_day4 = day4_records[-1]
 
-                st.success(
-                    "Day-4 research measurements are available "
-                    "for this batch."
-                )
+            st.success(
+                "Day-4 research measurements are available "
+                "for this batch."
+            )
 
-                st.write(
-                    f"**Day-4 Weight Loss:** "
-                    f"{float(latest_day4['weight_loss_percent']):.2f}%"
-                )
+            st.write(
+                f"**Day-4 Weight Loss:** "
+                f"{float(latest_day4['weight_loss_percent']):.2f}%"
+            )
 
-                st.write(
-                    f"**Day-4 Titratable Acidity:** "
-                    f"{float(latest_day4['titratable_acidity']):.2f}"
-                )
+            st.write(
+                f"**Day-4 Titratable Acidity:** "
+                f"{float(latest_day4['titratable_acidity']):.2f}"
+            )
 
-                st.info(
-                    "The AI prediction will use the Day-4 biochemical "
-                    "research measurements recorded for this batch."
-                )
+            st.info(
+                "The AI prediction will use the Day-4 biochemical "
+                "research measurements recorded for this batch."
+            )
 
-                if st.button(
-                    "Run AI Shelf-Life Prediction",
-                    type="primary"
-                ):
+            if st.button(
+                "Run AI Shelf-Life Prediction",
+                type="primary",
+                key="run_farmer_shelf_life_prediction",
+                use_container_width=True,
+            ):
+                try:
+                    result = run_farmer_batch_prediction_workflow(
+                        farmer_id=farmer_id,
+                        batch_id=selected_batch_id,
+                        input_method="research",
+                    )
 
-                    try:
+                    st.success(
+                        "Shelf-life prediction generated successfully."
+                    )
 
-                        result = run_farmer_batch_prediction_workflow(
-                            farmer_id=farmer_id,
-                            batch_id=selected_batch_id,
-                            input_method="research",
-                        )
+                    st.rerun()
 
-                        st.success(
-                            "Shelf-life prediction generated successfully."
-                        )
+                except Exception as e:
+                    st.error(
+                        f"Prediction could not be generated: {e}"
+                    )
 
-                        st.rerun()
+        else:
+            st.warning("Day-4 Research Data Required")
 
-                    except Exception as e:
+            st.write(
+                "This research-based shelf-life prediction "
+                "requires Day-4 biochemical measurements for "
+                "the selected batch."
+            )
 
-                        st.error(
-                            f"Prediction could not be generated: {e}"
-                        )
+            st.write("**Required research inputs:**")
+            st.write("- Day-4 Weight Loss (%)")
+            st.write("- Day-4 Titratable Acidity")
 
-            # ------------------------------------------------
-            # DAY-4 RESEARCH DATA NOT AVAILABLE
-            # ------------------------------------------------
+            st.info(
+                "Record the Day-4 research measurements for this "
+                "batch, then return here to run the AI "
+                "shelf-life prediction."
+            )
 
-            else:
-
-                st.warning(
-                    "Day-4 Research Data Required"
-                )
-
-                st.write(
-                    "This research-based shelf-life prediction "
-                    "requires Day-4 biochemical measurements for "
-                    "the selected batch."
-                )
-
-                st.write(
-                    "**Required research inputs:**"
-                )
-
-                st.write(
-                    "â€¢ Day-4 Weight Loss (%)"
-                )
-
-                st.write(
-                    "â€¢ Day-4 Titratable Acidity"
-                )
-
-                st.info(
-                    "Record the Day-4 research measurements for this "
-                    "batch, then return here to run the AI "
-                    "shelf-life prediction."
-                )
 # ============================================================
 # PAGE 6 â€” MARKET LISTINGS
 # ============================================================
+
+elif page == "Prediction History":
+
+    st.title("Prediction History")
+
+    st.write(
+        "View your previously generated AI shelf-life predictions "
+        "and their recorded results."
+    )
+
+    # Retrieve only the authenticated user's history.
+    history_records = get_prediction_history(
+        user_id=int(logged_in_user_id)
+    )
+
+    if not history_records:
+
+        st.info(
+            "No prediction history is available yet. "
+            "Generate a shelf-life prediction to see it here."
+        )
+
+    else:
+
+        st.metric(
+            "Total Historical Predictions",
+            len(history_records)
+        )
+
+        st.divider()
+        st.subheader("Your Previous Predictions")
+
+        for record in history_records:
+
+            produce_name = record.get("produce_name") or "Unknown Produce"
+            prediction_id = record.get("prediction_id")
+            total_days = record.get("total_shelf_life_days")
+            remaining_days = record.get("remaining_shelf_life_days")
+            status = record.get("status") or "Not specified"
+            recorded_at = record.get("recorded_at")
+            input_method = record.get("input_method") or "Not specified"
+            storage_days = record.get("current_storage_days")
+            confidence_note = record.get("confidence_note")
+
+            with st.expander(
+                f"{produce_name} - Prediction #{prediction_id}"
+            ):
+
+                col1, col2 = st.columns(2)
+
+                with col1:
+                    st.metric(
+                        "Total Estimated Shelf-Life",
+                        f"{total_days} days"
+                        if total_days is not None else "N/A"
+                    )
+
+                with col2:
+                    st.metric(
+                        "Remaining Shelf-Life",
+                        f"{remaining_days} days"
+                        if remaining_days is not None else "N/A"
+                    )
+
+                st.write(f"**Status:** {status}")
+                st.write(f"**Prediction Date:** {recorded_at}")
+                st.write(f"**Prediction Method:** {input_method}")
+
+                if storage_days is not None:
+                    st.write(f"**Storage Duration:** {storage_days} days")
+                else:
+                    st.write("**Storage Duration:** N/A")
+
+                if confidence_note:
+                    st.info(f"**Confidence Note:** {confidence_note}")
+
 
 elif page == "Market Listings":
 
@@ -2575,7 +2749,7 @@ elif page == "Buyer Management":
 
                 st.error(
                     f"Failed to assign buyer: {e}"
-                )        
+                )
 
 
 

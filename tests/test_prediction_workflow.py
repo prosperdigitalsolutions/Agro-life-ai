@@ -1,4 +1,5 @@
 ﻿import shutil
+import sqlite3
 import sys
 import tempfile
 import unittest
@@ -28,7 +29,31 @@ class TestPredictionWorkflow(unittest.TestCase):
         shutil.copy2(DATABASE_FILE, self.test_database)
 
         self.original_database_path = dm.DATABASE_PATH
+        self.original_get_connection = dm.get_connection
         dm.DATABASE_PATH = self.test_database
+
+        def get_test_connection():
+            conn = sqlite3.connect(str(self.test_database))
+            conn.row_factory = sqlite3.Row
+            conn.execute("PRAGMA foreign_keys = ON")
+            conn.execute(
+                """
+                CREATE TABLE IF NOT EXISTS batch_research_measurements (
+                    measurement_id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    batch_id INTEGER NOT NULL,
+                    day_number INTEGER NOT NULL,
+                    weight_loss_percent REAL NOT NULL,
+                    titratable_acidity REAL NOT NULL,
+                    recorded_at TEXT DEFAULT CURRENT_TIMESTAMP,
+                    FOREIGN KEY (batch_id)
+                        REFERENCES produce_batches(batch_id)
+                )
+                """
+            )
+            conn.commit()
+            return conn
+
+        dm.get_connection = get_test_connection
 
         conn = dm.get_connection()
         try:
@@ -43,6 +68,7 @@ class TestPredictionWorkflow(unittest.TestCase):
             conn.close()
 
     def tearDown(self):
+        dm.get_connection = self.original_get_connection
         dm.DATABASE_PATH = self.original_database_path
         self.temp_dir.cleanup()
 

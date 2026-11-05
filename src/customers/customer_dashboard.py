@@ -1,27 +1,39 @@
-import streamlit as st
+﻿import streamlit as st
 from PIL import Image
 
 try:
-    from src.database.database_manager import (  # pyright: ignore[reportMissingImports]
+    from src.database.database_manager import (
         add_buyer,
         get_buyer,
+        get_buyer_by_user_id,
+        save_customer_profile,
+        update_buyer,
         add_customer_camera_assessment,
+        get_all_customer_camera_assessments,
+        delete_customer_camera_assessment,
+        get_available_market_listings,
+        get_customer_market_reservations,
+        reserve_market_listing_for_customer,
     )
 
-    from src.vision.camera_assessment import (  # pyright: ignore[reportMissingImports]
-        process_camera_image,
-    )
+    from src.vision.camera_assessment import process_camera_image
 
 except ModuleNotFoundError:
-    from database.database_manager import (  # pyright: ignore[reportMissingImports]
+    from database.database_manager import (
         add_buyer,
         get_buyer,
+        get_buyer_by_user_id,
+        save_customer_profile,
+        update_buyer,
         add_customer_camera_assessment,
+        get_all_customer_camera_assessments,
+        delete_customer_camera_assessment,
+        get_available_market_listings,
+        get_customer_market_reservations,
+        reserve_market_listing_for_customer,
     )
 
-    from vision.camera_assessment import (  # pyright: ignore[reportMissingImports]
-        process_camera_image,
-    )
+    from vision.camera_assessment import process_camera_image
 
 
 try:
@@ -58,6 +70,43 @@ if not (has_role("BUYER") or has_role("CUSTOMER")):
 
     st.stop()
 
+# ============================================================
+# AUTOMATIC CUSTOMER PROFILE INITIALISATION
+# ============================================================
+
+authenticated_user = st.session_state.get("user")
+
+if isinstance(authenticated_user, dict):
+
+    authenticated_user_id = authenticated_user.get("user_id")
+
+    if authenticated_user_id is not None:
+
+        customer_profile = get_buyer_by_user_id(
+            authenticated_user_id
+        )
+
+        if customer_profile:
+
+            st.session_state["customer_buyer_id"] = (
+                customer_profile["buyer_id"]
+            )
+
+            st.session_state["customer_user_id"] = (
+                customer_profile["user_id"]
+            )
+
+        else:
+
+            st.session_state.pop(
+                "customer_buyer_id",
+                None
+            )
+
+            st.session_state.pop(
+                "customer_user_id",
+                None
+            )
 
 # CUSTOM CSS
 # ============================================================
@@ -320,6 +369,9 @@ page = st.sidebar.radio(
         "Capture Customer",
         "Customer Decision Support",
         "Camera Assessment",
+        "Camera Assessment History",
+        "Marketplace",
+        "My Reservations",
     ],
     label_visibility="collapsed",
     key="customer_navigation",
@@ -1040,6 +1092,238 @@ elif page == "Camera Assessment":
             )
 
     # --------------------------------------------------------
+
+elif page == "Camera Assessment History":
+
+    st.title("Camera Assessment History")
+    st.caption("View and manage your previous camera assessments.")
+
+    customer_user_id = st.session_state.get("customer_user_id")
+
+    if not customer_user_id:
+        st.warning("Customer account information is unavailable.")
+    else:
+        try:
+            records = get_all_customer_camera_assessments(
+                user_id=int(customer_user_id)
+            )
+
+            if not records:
+                st.info("You have not completed any camera assessments yet.")
+            else:
+                st.success(
+                    f"You have completed {len(records)} camera assessment(s)."
+                )
+
+                for record in records:
+
+                    assessment_id = int(record["assessment_id"])
+
+                    with st.container(border=True):
+
+                        col1, col2 = st.columns([1, 2])
+
+                        with col1:
+                            image_path = record.get("image_path")
+
+                            if image_path:
+                                try:
+                                    st.image(
+                                        image_path,
+                                        caption="Captured Produce",
+                                        use_container_width=True,
+                                    )
+                                except Exception:
+                                    st.warning("Captured image is unavailable.")
+                            else:
+                                st.warning("No captured image is available.")
+
+                        with col2:
+                            st.subheader(
+                                record.get("produce_name", "Unknown Produce")
+                            )
+
+                            st.write(
+                                f"**Assessment Reference:** {assessment_id}"
+                            )
+
+                            predicted_class = record.get(
+                                "predicted_class", "Unknown"
+                            )
+
+                            if predicted_class.lower() == "fresh":
+                                st.success("Prediction: FRESH")
+                            elif predicted_class.lower() == "rotten":
+                                st.error("Prediction: ROTTEN")
+                            else:
+                                st.warning(
+                                    f"Prediction: {predicted_class}"
+                                )
+
+                            probability = record.get("model_probability")
+
+                            confidence_level = "Unavailable"
+
+                            if probability is not None:
+
+                                probability_value = float(probability)
+
+                                st.metric(
+                                    "Model Confidence",
+                                    f"{probability_value * 100:.2f}%",
+                                )
+
+                                if probability_value < 0.60:
+                                    confidence_level = "Low"
+
+                                elif probability_value < 0.80:
+                                    confidence_level = "Moderate"
+
+                                else:
+                                    confidence_level = "High"
+
+                            st.write("")
+
+                            st.metric(
+                                "Confidence Level",
+                                confidence_level,
+                            )
+
+                            # HISTORICAL CUSTOMER RECOMMENDATION
+
+                            st.subheader(
+                                "AGRO LIFE-AI Recommendation"
+                            )
+
+                            if confidence_level == "Low":
+
+                                st.warning(
+                                    "The model has low confidence in "
+                                    "this historical classification. "
+                                    "Do not rely on this result alone. "
+                                    "Manual inspection and further "
+                                    "assessment are recommended."
+                                )
+
+                            elif confidence_level == "Moderate":
+
+                                if predicted_class.lower() == "fresh":
+
+                                    st.info(
+                                        "The produce was classified as "
+                                        "Fresh with moderate confidence. "
+                                        "Inspect it carefully, handle it "
+                                        "properly and store it under "
+                                        "suitable conditions."
+                                    )
+
+                                elif predicted_class.lower() == "rotten":
+
+                                    st.warning(
+                                        "The produce was classified as "
+                                        "Rotten with moderate confidence. "
+                                        "Separate it from fresh produce "
+                                        "and arrange further inspection."
+                                    )
+
+                            elif confidence_level == "High":
+
+                                if predicted_class.lower() == "fresh":
+
+                                    st.success(
+                                        "The produce was classified as "
+                                        "Fresh with high model confidence. "
+                                        "Handle it carefully, store it "
+                                        "under suitable conditions and "
+                                        "inspect it regularly."
+                                    )
+
+                                elif predicted_class.lower() == "rotten":
+
+                                    st.warning(
+                                        "The produce was classified as "
+                                        "Rotten with high model confidence. "
+                                        "Separate it from fresh produce "
+                                        "and seek further inspection."
+                                    )
+
+                            else:
+
+                                st.info(
+                                    "Model confidence is unavailable. "
+                                    "Inspect the produce manually before "
+                                    "making quality decisions."
+                                )
+
+                            st.caption(
+                                f"Assessment Date: "
+                                f"{record.get('created_at', 'Unavailable')}"
+                            )
+
+                            pending_key = (
+                                f"delete_camera_pending_{assessment_id}"
+                            )
+
+                            if st.button(
+                                "Delete Assessment",
+                                key=f"delete_camera_{assessment_id}",
+                            ):
+                                st.session_state[pending_key] = True
+                                st.rerun()
+
+                            if st.session_state.get(pending_key):
+
+                                st.warning(
+                                    "Are you sure you want to delete "
+                                    "this camera assessment?"
+                                )
+
+                                confirm_col, cancel_col = st.columns(2)
+
+                                with confirm_col:
+                                    if st.button(
+                                        "Confirm Delete",
+                                        key=f"confirm_delete_{assessment_id}",
+                                        type="primary",
+                                    ):
+                                        deleted = (
+                                            delete_customer_camera_assessment(
+                                                assessment_id=assessment_id,
+                                                user_id=int(customer_user_id),
+                                            )
+                                        )
+
+                                        st.session_state.pop(
+                                            pending_key, None
+                                        )
+
+                                        if deleted:
+                                            st.success(
+                                                "Camera assessment deleted."
+                                            )
+                                        else:
+                                            st.warning(
+                                                "Assessment was not found "
+                                                "or does not belong to you."
+                                            )
+
+                                        st.rerun()
+
+                                with cancel_col:
+                                    if st.button(
+                                        "Cancel",
+                                        key=f"cancel_delete_{assessment_id}",
+                                    ):
+                                        st.session_state.pop(
+                                            pending_key, None
+                                        )
+                                        st.rerun()
+
+        except Exception as error:
+            st.error(
+                f"Unable to retrieve camera history: {error}"
+            )
+
 # CAMERA RESULT
 # --------------------------------------------------------
 
@@ -1056,6 +1340,11 @@ if "camera_result" in st.session_state:
         "model_probability"
     )
 
+    confidence_level = result.get(
+        "confidence_level",
+        "Unavailable",
+    )
+
     st.divider()
 
     with st.container(border=True):
@@ -1069,7 +1358,7 @@ if "camera_result" in st.session_state:
 
         st.write("")
 
-        result_col1, result_col2 = st.columns(2)
+        result_col1, result_col2, result_col3 = st.columns(3)
 
         with result_col1:
 
@@ -1094,43 +1383,115 @@ if "camera_result" in st.session_state:
                     "Not available",
                 )
 
+        with result_col3:
+
+            st.metric(
+                "Confidence Level",
+                confidence_level,
+            )
+
         st.divider()
 
         # ----------------------------------------------------
-        # AUTOMATIC DECISION MESSAGE
+        # ----------------------------------------------------
+        # CONFIDENCE-AWARE AUTOMATIC DECISION MESSAGE
         # ----------------------------------------------------
 
-        if predicted_class.lower() == "fresh":
+        confidence_level = result.get(
+            "confidence_level",
+            "Unavailable",
+        )
 
-            st.success(
-                "FRESH — The computer-vision model "
-                "automatically classified this tomato as Fresh."
+        normalized_class = predicted_class.strip().lower()
+        normalized_confidence = str(
+            confidence_level
+        ).strip().lower()
+
+        if normalized_confidence == "low":
+
+            st.warning(
+                f"PROVISIONAL {predicted_class.upper()} "
+                "CLASSIFICATION - The model has low confidence "
+                "in this result. Do not rely on the classification "
+                "alone. Manual inspection and further assessment "
+                "are recommended."
             )
 
-            st.write(
-                "The captured image shows visual characteristics "
-                "that the trained model associates with fresh "
-                "tomatoes."
+        elif normalized_confidence == "moderate":
+
+            st.info(
+                f"{predicted_class.upper()} CLASSIFICATION "
+                "WITH MODERATE CONFIDENCE - Inspect the tomato "
+                "carefully and use additional checks before "
+                "making quality decisions."
             )
 
-        elif predicted_class.lower() == "rotten":
+        elif normalized_confidence == "high":
 
-            st.error(
-                "ROTTEN — The computer-vision model "
-                "automatically classified this tomato as Rotten."
-            )
+            if normalized_class == "fresh":
 
-            st.write(
-                "The captured image shows visual characteristics "
-                "that the trained model associates with rotten "
-                "tomatoes."
-            )
+                st.success(
+                    "FRESH - The model classified this tomato "
+                    "as Fresh with high model confidence. "
+                    "Continue appropriate handling and regular "
+                    "inspection."
+                )
+
+            elif normalized_class == "rotten":
+
+                st.error(
+                    "ROTTEN - The model classified this tomato "
+                    "as Rotten with high model confidence. "
+                    "Separate it from fresh produce and arrange "
+                    "further inspection."
+                )
+
+            else:
+
+                st.warning(
+                    "The model returned an unrecognized "
+                    "classification. Manual inspection is required."
+                )
 
         else:
 
             st.warning(
-                "The model could not provide a recognized "
-                "Fresh or Rotten classification."
+                f"{predicted_class.upper()} CLASSIFICATION - "
+                "The model confidence level is unavailable. "
+                "Inspect the tomato manually before making "
+                "quality decisions."
+            )
+
+        st.write("")
+
+        # AGRO LIFE-AI CUSTOMER RECOMMENDATIONS
+        # ----------------------------------------------------
+
+        st.subheader("AGRO LIFE-AI Recommendations")
+
+        recommendation = result.get(
+            "customer_recommendation"
+        )
+
+        if recommendation:
+
+            if predicted_class.lower() == "fresh":
+
+                st.success(recommendation)
+
+            elif predicted_class.lower() == "rotten":
+
+                st.warning(recommendation)
+
+            else:
+
+                st.info(recommendation)
+
+        else:
+
+            st.info(
+                "No camera recommendation is available "
+                "for this assessment."
             )
 
         st.divider()
@@ -1145,3 +1506,239 @@ if "camera_result" in st.session_state:
             "This computer-vision result is research-based "
             "decision support and is not food-safety certification."
         )
+
+
+
+# ============================================================
+# CUSTOMER MARKETPLACE
+# ============================================================
+
+elif page == "Marketplace":
+
+    st.title("Produce Marketplace")
+    st.caption(
+        "Browse fresh produce offered by registered farmers."
+    )
+
+    customer_user_id = st.session_state.get("customer_user_id")
+    customer_buyer_id = st.session_state.get("customer_buyer_id")
+
+    if not customer_user_id or not customer_buyer_id:
+
+        st.warning(
+            "Please complete your customer profile before "
+            "reserving produce."
+        )
+
+    else:
+
+        listings = get_available_market_listings()
+
+        if not listings:
+
+            st.info(
+                "There are currently no available produce listings."
+            )
+
+        else:
+
+            st.success(
+                f"{len(listings)} available produce listing(s)."
+            )
+
+            for listing in listings:
+
+                listing_id = int(listing["listing_id"])
+                quantity = float(
+                    listing["quantity_available_kg"] or 0
+                )
+                price = float(listing["price_per_kg"] or 0)
+                total_value = quantity * price
+
+                with st.container(border=True):
+
+                    st.subheader(
+                        listing.get("produce_name", "Unknown Produce")
+                    )
+
+                    col1, col2, col3 = st.columns(3)
+
+                    with col1:
+                        st.metric(
+                            "Available Quantity",
+                            f"{quantity:,.2f} kg",
+                        )
+
+                    with col2:
+                        st.metric(
+                            "Price per kg",
+                            f"K{price:,.2f}",
+                        )
+
+                    with col3:
+                        st.metric(
+                            "Listing Value",
+                            f"K{total_value:,.2f}",
+                        )
+
+                    st.write(
+                        f"**Farmer/Seller:** "
+                        f"{listing.get('seller_name', 'Not available')}"
+                    )
+
+                    st.write(
+                        f"**Quality:** "
+                        f"{listing.get('quality_status', 'Not specified')}"
+                    )
+
+                    st.write(
+                        f"**Listing Reference:** {listing_id}"
+                    )
+
+                    st.warning(
+                        "Reserving this listing reserves the entire "
+                        f"quantity of {quantity:,.2f} kg."
+                    )
+
+                    if st.button(
+                        "Reserve Produce",
+                        key=f"customer_reserve_{listing_id}",
+                        type="primary",
+                        use_container_width=True,
+                    ):
+
+                        try:
+
+                            reserved = reserve_market_listing_for_customer(
+                                listing_id=listing_id,
+                                buyer_id=int(customer_buyer_id),
+                                user_id=int(customer_user_id),
+                            )
+
+                            if reserved:
+
+                                st.success(
+                                    "Produce successfully reserved!"
+                                )
+
+                                st.rerun()
+
+                            else:
+
+                                st.warning(
+                                    "This listing is no longer available. "
+                                    "Please refresh the marketplace."
+                                )
+
+                        except ValueError as error:
+
+                            st.error(str(error))
+
+                        except Exception as error:
+
+                            st.error(
+                                f"Reservation failed: {error}"
+                            )
+
+
+# ============================================================
+# CUSTOMER RESERVATIONS
+# ============================================================
+
+elif page == "My Reservations":
+
+    st.title("My Reservations")
+
+    st.caption(
+        "View produce listings reserved under your customer account."
+    )
+
+    customer_user_id = st.session_state.get("customer_user_id")
+
+    if not customer_user_id:
+
+        st.warning(
+            "Please complete your customer profile first."
+        )
+
+    else:
+
+        reservations = get_customer_market_reservations(
+            int(customer_user_id)
+        )
+
+        if not reservations:
+
+            st.info(
+                "You have no produce reservations yet. "
+                "Visit the Marketplace to browse available produce."
+            )
+
+        else:
+
+            st.success(
+                f"You have {len(reservations)} reservation(s)."
+            )
+
+            for reservation in reservations:
+
+                quantity = float(
+                    reservation["quantity_available_kg"] or 0
+                )
+
+                price = float(
+                    reservation["price_per_kg"] or 0
+                )
+
+                total_value = quantity * price
+
+                with st.container(border=True):
+
+                    st.subheader(
+                        reservation.get(
+                            "produce_name",
+                            "Unknown Produce",
+                        )
+                    )
+
+                    col1, col2, col3 = st.columns(3)
+
+                    with col1:
+                        st.metric(
+                            "Reserved Quantity",
+                            f"{quantity:,.2f} kg",
+                        )
+
+                    with col2:
+                        st.metric(
+                            "Price per kg",
+                            f"K{price:,.2f}",
+                        )
+
+                    with col3:
+                        st.metric(
+                            "Listing Value",
+                            f"K{total_value:,.2f}",
+                        )
+
+                    st.write(
+                        f"**Seller:** "
+                        f"{reservation.get('seller_name', 'Not available')}"
+                    )
+
+                    st.write(
+                        f"**Quality:** "
+                        f"{reservation.get('quality_status', 'Not specified')}"
+                    )
+
+                    st.write(
+                        f"**Reservation Reference:** "
+                        f"{reservation.get('listing_id')}"
+                    )
+
+                    st.success("Reservation Status: RESERVED")
+
+                    st.caption(
+                        "This is a produce reservation, not a "
+                        "completed payment or delivery confirmation."
+                    )

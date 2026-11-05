@@ -331,7 +331,7 @@ def run_farmer_batch_prediction_workflow(
     # The Tomato model itself uses the Day-4 research
     # measurements supplied below.
 
-    prediction_input_method = "manual"
+    prediction_input_method = input_method
 
     prediction = run_prediction(
         produce_name=produce_name,
@@ -540,8 +540,3 @@ if __name__ == "__main__":
 
     print()
     print("USER-BASED WORKFLOW TEST COMPLETED SUCCESSFULLY")
-
-
-
-
-

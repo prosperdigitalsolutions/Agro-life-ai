@@ -54,6 +54,7 @@ class CompatibleCursor:
         self._cursor = cursor
         self._postgres = postgres
         self._lastrowid = None
+        self._expects_generated_id = False
 
     def execute(self, sql, parameters=None):
         self._lastrowid = None

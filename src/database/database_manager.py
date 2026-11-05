@@ -2425,6 +2425,170 @@ def get_buyer(buyer_id: int):
     finally:
         conn.close()
 
+def save_customer_profile(
+    user_id: int,
+    full_name: str,
+    buyer_type: str,
+    buyer_location: str = None,
+    phone: str = None,
+    email: str = None,
+):
+    """
+    Create or update a buyer profile linked to an existing
+    authenticated BUYER or CUSTOMER account.
+    """
+
+    conn = get_connection()
+
+    try:
+        cursor = conn.cursor()
+
+        # Verify authenticated user
+        cursor.execute(
+            """
+            SELECT user_id, user_type
+            FROM users
+            WHERE user_id = ?
+            """,
+            (user_id,),
+        )
+
+        user = cursor.fetchone()
+
+        if user is None:
+            raise ValueError("Customer account does not exist.")
+
+        if str(user[1]).upper() not in ("BUYER", "CUSTOMER"):
+            raise ValueError("This account is not a customer account.")
+
+        # Check for existing buyer profile
+        cursor.execute(
+            """
+            SELECT buyer_id
+            FROM buyers
+            WHERE user_id = ?
+            """,
+            (user_id,),
+        )
+
+        profiles = cursor.fetchall()
+
+        if len(profiles) > 1:
+            raise ValueError(
+                "Multiple buyer profiles already exist for this account. "
+                "Please resolve the duplicates first."
+            )
+
+        # Update existing user information
+        cursor.execute(
+            """
+            UPDATE users
+            SET
+                full_name = ?,
+                phone = ?,
+                email = ?
+            WHERE user_id = ?
+            """,
+            (
+                full_name,
+                phone,
+                email,
+                user_id,
+            ),
+        )
+
+        if profiles:
+
+            buyer_id = profiles[0][0]
+
+            cursor.execute(
+                """
+                UPDATE buyers
+                SET
+                    buyer_type = ?,
+                    buyer_location = ?
+                WHERE buyer_id = ?
+                """,
+                (
+                    buyer_type,
+                    buyer_location,
+                    buyer_id,
+                ),
+            )
+
+        else:
+
+            cursor.execute(
+                """
+                INSERT INTO buyers (
+                    user_id,
+                    buyer_type,
+                    buyer_location
+                )
+                VALUES (?, ?, ?)
+                """,
+                (
+                    user_id,
+                    buyer_type,
+                    buyer_location,
+                ),
+            )
+
+            buyer_id = cursor.lastrowid
+
+        conn.commit()
+
+        return buyer_id
+
+    except Exception:
+        conn.rollback()
+        raise
+
+    finally:
+        conn.close()
+
+def get_buyer_by_user_id(user_id: int):
+    """
+    Retrieve a buyer profile using the authenticated user ID.
+    """
+
+    conn = get_connection()
+    conn.row_factory = sqlite3.Row
+
+    try:
+        cursor = conn.cursor()
+
+        cursor.execute(
+            """
+            SELECT
+                b.buyer_id,
+                b.user_id,
+                u.full_name,
+                u.phone,
+                u.email,
+                b.buyer_type,
+                b.buyer_location,
+                b.created_at
+
+            FROM buyers b
+
+            INNER JOIN users u
+                ON b.user_id = u.user_id
+
+            WHERE b.user_id = ?
+            """,
+            (user_id,),
+        )
+
+        row = cursor.fetchone()
+
+        if row is None:
+            return None
+
+        return dict(row)
+
+    finally:
+        conn.close()
 
 def get_all_buyers():
     """
@@ -3953,6 +4117,9 @@ def get_farmer_dashboard(farmer_id: int):
 # CUSTOMER CAMERA ASSESSMENT MANAGEMENT
 # ============================================================
 
+import math
+
+
 def add_customer_camera_assessment(
     user_id: int,
     produce_id: int,
@@ -3963,29 +4130,59 @@ def add_customer_camera_assessment(
     """
     Save an automatic customer camera assessment.
 
-    The computer-vision model determines whether the
-    produce is Fresh or Rotten.
+    Only authenticated BUYER/CUSTOMER accounts are accepted.
     """
+
+    if isinstance(user_id, bool) or not isinstance(user_id, int) or user_id <= 0:
+        raise ValueError("Invalid customer user ID.")
+
+    if isinstance(produce_id, bool) or not isinstance(produce_id, int) or produce_id <= 0:
+        raise ValueError("Invalid produce ID.")
+
+    if not isinstance(predicted_class, str):
+        raise ValueError("Predicted class must be Fresh or Rotten.")
+
+    if predicted_class not in ("Fresh", "Rotten"):
+        raise ValueError("Predicted class must be Fresh or Rotten.")
+
+    if model_probability is not None:
+        try:
+            model_probability = float(model_probability)
+        except (TypeError, ValueError):
+            raise ValueError("Model probability must be a valid number.")
+
+        if not math.isfinite(model_probability):
+            raise ValueError("Model probability must be finite.")
+
+        if not 0 <= model_probability <= 1:
+            raise ValueError("Model probability must be between 0 and 1.")
 
     conn = get_connection()
 
     try:
         cursor = conn.cursor()
 
-        # Verify customer/user exists
+        # Verify customer account and role
         cursor.execute(
             """
-            SELECT user_id
+            SELECT user_id, user_type
             FROM users
             WHERE user_id = ?
             """,
             (user_id,),
         )
 
-        if cursor.fetchone() is None:
-            raise ValueError("Customer does not exist.")
+        user = cursor.fetchone()
 
-        # Verify produce exists
+        if user is None:
+            raise ValueError("Customer account does not exist.")
+
+        if str(user["user_type"]).upper() not in ("BUYER", "CUSTOMER"):
+            raise ValueError(
+                "Only BUYER or CUSTOMER accounts can save camera assessments."
+            )
+
+        # Verify active produce
         cursor.execute(
             """
             SELECT produce_id
@@ -3997,21 +4194,9 @@ def add_customer_camera_assessment(
         )
 
         if cursor.fetchone() is None:
-            raise ValueError("Selected produce does not exist.")
+            raise ValueError("Selected produce does not exist or is inactive.")
 
-        # Validate automatic model result
-        if predicted_class not in ("Fresh", "Rotten"):
-            raise ValueError(
-                "Predicted class must be Fresh or Rotten."
-            )
-
-        # Validate confidence
-        if model_probability is not None:
-            if model_probability < 0 or model_probability > 1:
-                raise ValueError(
-                    "Model probability must be between 0 and 1."
-                )
-
+        # Save assessment
         cursor.execute(
             """
             INSERT INTO customer_camera_assessments (
@@ -4034,6 +4219,9 @@ def add_customer_camera_assessment(
 
         assessment_id = cursor.lastrowid
 
+        if assessment_id is None:
+            raise RuntimeError("Camera assessment ID was not generated.")
+
         conn.commit()
 
         return assessment_id
@@ -4046,20 +4234,38 @@ def add_customer_camera_assessment(
         conn.close()
 
 
-def get_all_customer_camera_assessments():
+
+
+# ============================================================
+# CUSTOMER CAMERA ASSESSMENT HISTORY
+# ============================================================
+
+def get_all_customer_camera_assessments(user_id=None):
     """
-    Retrieve all customer camera assessments for
-    the Admin Dashboard.
+    Retrieve customer camera assessments.
+
+    user_id=None:
+        Retrieve all assessments for Admin Dashboard.
+
+    user_id=<ID>:
+        Retrieve assessments belonging to one customer.
     """
 
+    if user_id is not None:
+
+        if (
+            isinstance(user_id, bool)
+            or not isinstance(user_id, int)
+            or user_id <= 0
+        ):
+            raise ValueError("Invalid customer user ID.")
+
     conn = get_connection()
-    conn.row_factory = sqlite3.Row
 
     try:
         cursor = conn.cursor()
 
-        cursor.execute(
-            """
+        query = """
             SELECT
                 cca.assessment_id,
                 cca.user_id,
@@ -4080,10 +4286,21 @@ def get_all_customer_camera_assessments():
 
             INNER JOIN produce p
                 ON cca.produce_id = p.produce_id
+        """
 
-            ORDER BY cca.assessment_id DESC
+        parameters = ()
+
+        if user_id is not None:
+            query += """
+                WHERE cca.user_id = ?
             """
-        )
+            parameters = (user_id,)
+
+        query += """
+            ORDER BY cca.assessment_id DESC
+        """
+
+        cursor.execute(query, parameters)
 
         rows = cursor.fetchall()
 
@@ -4091,8 +4308,6 @@ def get_all_customer_camera_assessments():
 
     finally:
         conn.close()
-
-
 # ============================================================
 # ADMIN RECORD MANAGEMENT
 # ============================================================
@@ -4229,13 +4444,29 @@ def delete_prediction(prediction_id: int):
         conn.close()
 
 
-def delete_customer_camera_assessment(assessment_id: int):
+def delete_customer_camera_assessment(
+    assessment_id: int,
+    user_id: int,
+):
     """
-    Delete one customer camera assessment without deleting the
-    customer, produce type, or captured image file.
+    Securely delete a camera assessment belonging to one customer.
 
-    Returns True when deleted, False when the assessment is not found.
+    Both assessment_id and user_id must match.
     """
+
+    if (
+        isinstance(assessment_id, bool)
+        or not isinstance(assessment_id, int)
+        or assessment_id <= 0
+    ):
+        raise ValueError("Invalid assessment ID.")
+
+    if (
+        isinstance(user_id, bool)
+        or not isinstance(user_id, int)
+        or user_id <= 0
+    ):
+        raise ValueError("Invalid customer user ID.")
 
     conn = get_connection()
 
@@ -4246,13 +4477,186 @@ def delete_customer_camera_assessment(assessment_id: int):
             """
             DELETE FROM customer_camera_assessments
             WHERE assessment_id = ?
+              AND user_id = ?
             """,
-            (assessment_id,),
+            (assessment_id, user_id),
         )
 
         deleted = cursor.rowcount > 0
         conn.commit()
+
         return deleted
+
+    except Exception:
+        conn.rollback()
+        raise
+
+    finally:
+        conn.close()
+
+
+
+# ============================================================
+# CUSTOMER MARKETPLACE
+# ============================================================
+
+def get_available_market_listings():
+    """
+    Retrieve marketplace listings that customers can reserve.
+    """
+
+    conn = get_connection()
+    conn.row_factory = sqlite3.Row
+
+    try:
+        cursor = conn.cursor()
+
+        cursor.execute(
+            """
+            SELECT
+                ml.listing_id,
+                ml.batch_id,
+                ml.seller_id,
+                u.full_name AS seller_name,
+                p.name AS produce_name,
+                ml.quantity_available_kg,
+                ml.price_per_kg,
+                ml.quality_status,
+                ml.listing_status,
+                ml.created_at
+
+            FROM market_listings ml
+
+            INNER JOIN users u
+                ON ml.seller_id = u.user_id
+
+            INNER JOIN produce_batches pb
+                ON ml.batch_id = pb.batch_id
+
+            INNER JOIN produce p
+                ON pb.produce_id = p.produce_id
+
+            WHERE UPPER(ml.listing_status) = 'AVAILABLE'
+              AND ml.buyer_id IS NULL
+
+            ORDER BY ml.listing_id DESC
+            """
+        )
+
+        return [dict(row) for row in cursor.fetchall()]
+
+    finally:
+        conn.close()
+
+
+def get_customer_market_reservations(user_id: int):
+    """
+    Retrieve marketplace reservations belonging to one customer.
+    """
+
+    conn = get_connection()
+    conn.row_factory = sqlite3.Row
+
+    try:
+        cursor = conn.cursor()
+
+        cursor.execute(
+            """
+            SELECT
+                ml.listing_id,
+                ml.batch_id,
+                ml.seller_id,
+                seller.full_name AS seller_name,
+                p.name AS produce_name,
+                ml.quantity_available_kg,
+                ml.price_per_kg,
+                ml.quality_status,
+                ml.listing_status,
+                ml.created_at,
+                ml.buyer_id
+
+            FROM market_listings ml
+
+            INNER JOIN buyers b
+                ON ml.buyer_id = b.buyer_id
+
+            INNER JOIN users seller
+                ON ml.seller_id = seller.user_id
+
+            INNER JOIN produce_batches pb
+                ON ml.batch_id = pb.batch_id
+
+            INNER JOIN produce p
+                ON pb.produce_id = p.produce_id
+
+            WHERE b.user_id = ?
+              AND UPPER(ml.listing_status) = 'RESERVED'
+
+            ORDER BY ml.listing_id DESC
+            """,
+            (user_id,),
+        )
+
+        return [dict(row) for row in cursor.fetchall()]
+
+    finally:
+        conn.close()
+
+
+def reserve_market_listing_for_customer(
+    listing_id: int,
+    buyer_id: int,
+    user_id: int,
+):
+    """
+    Securely reserve an available listing for its authenticated customer.
+
+    A listing can only be reserved once and only by the owner
+    of the buyer profile.
+    """
+
+    conn = get_connection()
+
+    try:
+        cursor = conn.cursor()
+
+        # Verify that this buyer profile belongs to this user.
+        cursor.execute(
+            """
+            SELECT buyer_id
+            FROM buyers
+            WHERE buyer_id = ?
+              AND user_id = ?
+            """,
+            (buyer_id, user_id),
+        )
+
+        buyer = cursor.fetchone()
+
+        if buyer is None:
+            raise ValueError(
+                "The buyer profile does not belong to this account."
+            )
+
+        # Atomically reserve only an available listing.
+        cursor.execute(
+            """
+            UPDATE market_listings
+            SET
+                buyer_id = ?,
+                listing_status = 'RESERVED'
+            WHERE listing_id = ?
+              AND UPPER(listing_status) = 'AVAILABLE'
+              AND buyer_id IS NULL
+            """,
+            (buyer_id, listing_id),
+        )
+
+        reserved = cursor.rowcount == 1
+
+        conn.commit()
+
+        return reserved
 
     except Exception:
         conn.rollback()

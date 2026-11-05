@@ -1,4 +1,4 @@
-﻿"""
+"""
 AGRO LIFE-AI
 Shared Database Connection
 
@@ -6,6 +6,7 @@ Uses Neon PostgreSQL when DATABASE_URL is configured.
 Falls back to local SQLite for development.
 """
 
+import atexit
 import os
 import sqlite3
 import threading
@@ -109,6 +110,9 @@ def close_postgres_pool():
         if _POSTGRES_POOL is not None:
             _POSTGRES_POOL.close()
             _POSTGRES_POOL = None
+
+
+atexit.register(close_postgres_pool)
 
 
 def get_connection():

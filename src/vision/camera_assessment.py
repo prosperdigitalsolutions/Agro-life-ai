@@ -26,6 +26,7 @@ from src.vision.prediction_result_manager import (
     save_prediction_record,
 )
 
+
 from src.customers.cv_decision_support import (
     generate_cv_decision_support,
 )
@@ -121,10 +122,6 @@ def classify_camera_image(image):
 def process_camera_image(image):
     """
     Process a camera image and save a managed prediction result.
-
-    The captured image is permanently stored in the project
-    results directory so that the prediction record does not
-    point to a deleted temporary file.
     """
 
     classification = classify_camera_image(image)
@@ -138,41 +135,117 @@ def process_camera_image(image):
         "%Y%m%d_%H%M%S_%f"
     )
 
-    image_filename = (
-        f"tomato_camera_{timestamp}.jpg"
-    )
+    image_filename = f"tomato_camera_{timestamp}.jpg"
 
     captured_image_path = (
-        CAMERA_CAPTURE_DIR
-        / image_filename
+        CAMERA_CAPTURE_DIR / image_filename
     )
 
     if not isinstance(image, Image.Image):
         image = Image.open(image)
 
     image = image.convert("RGB")
-
     image.save(captured_image_path)
 
     cv_support = generate_cv_decision_support(
-    produce_name="Tomato",
-    predicted_class=classification["predicted_class"],
-    model_probability=classification["model_probability"],
-)
+        produce_name="Tomato",
+        predicted_class=classification["predicted_class"],
+        model_probability=classification["model_probability"],
+    )
+
     prediction_record = create_prediction_record(
-    image_path=str(captured_image_path),
-    predicted_class=classification["predicted_class"],
-    probability=classification["model_probability"],
-    decision_support=cv_support["decision_support"],
-    research_warning=cv_support["research_warning"],
-)
+        image_path=str(captured_image_path),
+        predicted_class=classification["predicted_class"],
+        probability=classification["model_probability"],
+        decision_support=cv_support["decision_support"],
+        research_warning=cv_support["research_warning"],
+    )
+
     output_file = save_prediction_record(
-    prediction_record
-)
+        prediction_record
+    )
+
 
     prediction_record["managed_prediction_file"] = str(
-    output_file
-)
+        output_file
+    )
+
+    # --------------------------------------------------------
+    # CONFIDENCE-BASED CUSTOMER RECOMMENDATIONS
+    # --------------------------------------------------------
+
+    probability = classification["model_probability"]
+
+    if probability is None:
+
+        confidence_level = "Unavailable"
+
+        customer_recommendation = (
+            "Model confidence is unavailable. Please inspect "
+            "the tomato manually before making quality decisions."
+        )
+
+    elif probability < 0.60:
+
+        confidence_level = "Low"
+
+        customer_recommendation = (
+            "The model has low confidence in this classification. "
+            "Do not rely on this result alone. Inspect the tomato "
+            "manually and seek further assessment."
+        )
+
+    elif probability < 0.80:
+
+        confidence_level = "Moderate"
+
+        if classification["predicted_class"] == "Fresh":
+
+            customer_recommendation = (
+                "The tomato was visually classified as Fresh "
+                "with moderate model confidence. Inspect it "
+                "carefully, handle it properly and store it "
+                "under suitable conditions."
+            )
+
+        else:
+
+            customer_recommendation = (
+                "The tomato was visually classified as Rotten "
+                "with moderate model confidence. Separate it "
+                "from fresh produce and arrange further inspection."
+            )
+
+    else:
+
+        confidence_level = "High"
+
+        if classification["predicted_class"] == "Fresh":
+
+            customer_recommendation = (
+                "The tomato was visually classified as Fresh "
+                "with high model confidence. Handle it carefully, "
+                "store it under suitable conditions and inspect "
+                "it regularly."
+            )
+
+        else:
+
+            customer_recommendation = (
+                "The tomato was visually classified as Rotten "
+                "with high model confidence. Separate it from "
+                "fresh produce and avoid consuming produce that "
+                "appears spoiled. Seek further inspection."
+            )
+
+    prediction_record["confidence_level"] = confidence_level
+
+    prediction_record["customer_recommendation"] = (
+        customer_recommendation
+    )
+
+    return prediction_record
+
 
     return prediction_record
 def display_camera_result(result):

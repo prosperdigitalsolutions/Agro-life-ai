@@ -137,14 +137,25 @@ atexit.register(close_postgres_pool)
 
 def get_connection():
     """
-    Open a connection to the configured database.
+    Open a fresh connection to the configured database.
 
-    PostgreSQL connections are borrowed from a shared pool and returned
-    when closed. SQLite remains the local development fallback.
+    PostgreSQL uses a direct connection to avoid reusing stale
+    connections from an idle shared pool.
+    SQLite remains the local development fallback.
     """
     if is_postgres():
-        pool = _get_postgres_pool()
-        return _PooledConnectionLease(pool, pool.getconn())
+        import psycopg
+        from psycopg.rows import dict_row
+
+        return psycopg.connect(
+            conninfo=DATABASE_URL,
+            row_factory=dict_row,
+            connect_timeout=10,
+            keepalives=1,
+            keepalives_idle=30,
+            keepalives_interval=10,
+            keepalives_count=3,
+        )
 
     DATABASE_PATH.parent.mkdir(parents=True, exist_ok=True)
 
@@ -153,5 +164,3 @@ def get_connection():
     connection.execute("PRAGMA foreign_keys = ON")
 
     return connection
-
-

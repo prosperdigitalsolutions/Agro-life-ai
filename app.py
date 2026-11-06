@@ -1,10 +1,10 @@
-import base64
+﻿import base64
 from pathlib import Path
 
 import streamlit as st
 
 from src.auth.auth_manager import authenticate_user, change_user_password
-
+import logging
 
 # ============================================================
 # APPLICATION CONFIGURATION
@@ -407,8 +407,11 @@ def login_page():
 
                     except Exception:
 
+                        logging.exception("AGRO LIFE-AI LOGIN ERROR")
+
                         st.error(
-                            "Login failed. Please try again."
+                            "Login failed. Please try again. "
+                            "The technical error has been recorded."
                         )
 
         st.markdown(

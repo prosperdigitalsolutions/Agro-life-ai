@@ -326,6 +326,74 @@ def change_user_password(user_id, current_password, new_password):
 
 
 # ============================================================
+# ============================================================
+# ADMINISTRATOR FARMER PASSWORD RESET
+# ============================================================
+
+def admin_reset_farmer_password(user_id, new_password):
+    """
+    Allow administrators to reset an existing farmer's password.
+    Uses Argon2id and the configured database connection.
+    """
+
+    if st is None or not has_role("ADMIN"):
+        return False, "Administrator access is required."
+
+    if not isinstance(new_password, str) or not 8 <= len(new_password) <= 1024:
+        return False, "Password must contain between 8 and 1024 characters."
+
+    connection = get_auth_connection()
+
+    try:
+        cursor = connection.cursor()
+
+        cursor.execute(
+            """
+            SELECT c.credential_id
+            FROM user_credentials c
+            INNER JOIN users u ON u.user_id = c.user_id
+            WHERE c.user_id = ?
+              AND UPPER(u.user_type) = 'FARMER'
+            """,
+            (user_id,),
+        )
+
+        credential = cursor.fetchone()
+
+        if credential is None:
+            return False, "No existing Farmer login credentials were found."
+
+        new_hash, new_salt = hash_password(new_password)
+
+        cursor.execute(
+            """
+            UPDATE user_credentials
+            SET password_hash = ?, password_salt = ?
+            WHERE credential_id = ? AND user_id = ?
+            """,
+            (
+                new_hash,
+                new_salt,
+                credential["credential_id"],
+                user_id,
+            ),
+        )
+
+        if cursor.rowcount != 1:
+            connection.rollback()
+            return False, "The password could not be updated."
+
+        connection.commit()
+        return True, "Farmer password reset successfully."
+
+    except Exception:
+        connection.rollback()
+        return False, "Password reset failed. Please check the application logs."
+
+    finally:
+        connection.close()
+
+
 # LOGIN VERIFICATION
 # ============================================================
 

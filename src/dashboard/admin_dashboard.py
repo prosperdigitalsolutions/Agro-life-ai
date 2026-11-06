@@ -33,6 +33,7 @@ from src.auth.auth_manager import (
     logout_user,
     get_user_by_username,
     create_user_credentials,
+    admin_reset_farmer_password,
 )
 from src.database.database_manager import (
     get_all_farmers,
@@ -1070,6 +1071,66 @@ elif page == "Farmers":
             st.divider()
 
             # ------------------------------------------------
+            # ------------------------------------------------
+            # FARMER LOGIN PASSWORD RESET
+            # ------------------------------------------------
+
+            with st.container(border=True):
+
+                st.subheader("Reset Farmer Login Password")
+
+                st.caption(
+                    "Set a new password for this farmer's existing login account."
+                )
+
+                farmer_user_id = selected_farmer["user_id"]
+
+                with st.form(
+                    key=f"admin_reset_password_form_{selected_farmer_id}"
+                ):
+
+                    new_farmer_password = st.text_input(
+                        "New Password",
+                        type="password",
+                        key=f"new_farmer_password_{selected_farmer_id}",
+                    )
+
+                    confirm_farmer_password = st.text_input(
+                        "Confirm New Password",
+                        type="password",
+                        key=f"confirm_farmer_password_{selected_farmer_id}",
+                    )
+
+                    reset_submitted = st.form_submit_button(
+                        "Reset Farmer Password",
+                        type="primary",
+                    )
+
+                if reset_submitted:
+
+                    if not new_farmer_password or not confirm_farmer_password:
+                        st.error("Please complete both password fields.")
+
+                    elif new_farmer_password != confirm_farmer_password:
+                        st.error("The passwords do not match.")
+
+                    elif len(new_farmer_password) < 8:
+                        st.error("Password must contain at least 8 characters.")
+
+                    else:
+                        reset_success, reset_message = (
+                            admin_reset_farmer_password(
+                                farmer_user_id,
+                                new_farmer_password,
+                            )
+                        )
+
+                        if reset_success:
+                            st.success(reset_message)
+                        else:
+                            st.error(reset_message)
+
+
             # DELETE FARMER ? DANGER ZONE
             # ------------------------------------------------
 

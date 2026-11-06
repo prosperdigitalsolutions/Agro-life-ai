@@ -115,6 +115,7 @@ def _get_postgres_pool():
                     min_size=1,
                     max_size=5,
                     timeout=10,
+                    check=ConnectionPool.check_connection,
                     open=True,
                 )
 
@@ -152,4 +153,5 @@ def get_connection():
     connection.execute("PRAGMA foreign_keys = ON")
 
     return connection
+
 

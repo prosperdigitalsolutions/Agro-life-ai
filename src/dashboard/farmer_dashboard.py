@@ -1,4 +1,4 @@
-﻿import os
+import os
 import base64
 import streamlit as st
 import sys
@@ -1184,7 +1184,7 @@ elif page == "Produce Batches":
 
             asking_price = st.number_input(
                 "Asking Price per KG (K)",
-                min_value=0.0,
+                min_value=0.50,
                 step=0.50
             )
 
@@ -1211,6 +1211,8 @@ elif page == "Produce Batches":
         if submitted:
 
             try:
+                if asking_price < 0.50:
+                    raise ValueError('Asking Price per KG must be at least K0.50.')
                                 # ------------------------------------------------
                 # SAVE CROP PHOTO
                 # ------------------------------------------------

@@ -1,4 +1,4 @@
-"""
+﻿"""
 AGRO LIFE-AI
 Shared Database Connection
 
@@ -36,7 +36,7 @@ if not DATABASE_URL:
 import logging
 
 if DATABASE_URL.startswith(("postgresql://", "postgres://")):
-    logging.info("AGRO LIFE-AI DATABASE BACKEND: PostgreSQL")
+    logging.warning("AGRO LIFE-AI DATABASE BACKEND: PostgreSQL")
 else:
     logging.warning("AGRO LIFE-AI DATABASE BACKEND: SQLite")
 
@@ -152,3 +152,4 @@ def get_connection():
     connection.execute("PRAGMA foreign_keys = ON")
 
     return connection
+

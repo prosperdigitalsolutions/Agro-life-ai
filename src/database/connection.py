@@ -20,16 +20,26 @@ PROJECT_ROOT = Path(__file__).resolve().parents[2]
 # Load local development settings without overriding existing environment variables.
 load_dotenv(PROJECT_ROOT / ".env.local")
 
-DATABASE_URL = os.environ.get("DATABASE_URL", "").strip()
-# Read Streamlit Cloud Secrets if DATABASE_URL is not in environment variables.
+# Prefer Streamlit Cloud Secrets, then use environment variables locally.
+DATABASE_URL = ""
+
+try:
+    import streamlit as st
+    DATABASE_URL = str(st.secrets.get("DATABASE_URL", "")).strip()
+except Exception:
+    DATABASE_URL = ""
+
 if not DATABASE_URL:
-    try:
-        import streamlit as st
-        DATABASE_URL = str(
-            st.secrets.get("DATABASE_URL", "")
-        ).strip()
-    except Exception:
-        DATABASE_URL = ""
+    DATABASE_URL = os.environ.get("DATABASE_URL", "").strip()
+
+# Record the selected database backend without exposing credentials.
+import logging
+
+if DATABASE_URL.startswith(("postgresql://", "postgres://")):
+    logging.info("AGRO LIFE-AI DATABASE BACKEND: PostgreSQL")
+else:
+    logging.warning("AGRO LIFE-AI DATABASE BACKEND: SQLite")
+
 
 DATABASE_PATH = Path(
     os.environ.get(

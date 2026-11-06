@@ -21,6 +21,15 @@ PROJECT_ROOT = Path(__file__).resolve().parents[2]
 load_dotenv(PROJECT_ROOT / ".env.local")
 
 DATABASE_URL = os.environ.get("DATABASE_URL", "").strip()
+# Read Streamlit Cloud Secrets if DATABASE_URL is not in environment variables.
+if not DATABASE_URL:
+    try:
+        import streamlit as st
+        DATABASE_URL = str(
+            st.secrets.get("DATABASE_URL", "")
+        ).strip()
+    except Exception:
+        DATABASE_URL = ""
 
 DATABASE_PATH = Path(
     os.environ.get(

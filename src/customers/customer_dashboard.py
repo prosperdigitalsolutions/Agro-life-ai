@@ -506,6 +506,12 @@ if page == "Customer Dashboard":
 
 elif page == "Capture Customer":
 
+    def clear_customer_form():
+        st.session_state["customer_full_name"] = ""
+        st.session_state["customer_phone"] = ""
+        st.session_state["customer_email"] = ""
+        st.session_state["customer_location"] = ""
+
     st.title("Capture Customer")
 
     st.caption(
@@ -575,24 +581,12 @@ elif page == "Capture Customer":
 
     with cancel_col:
 
-        cancel_customer = st.button(
+        st.button(
             "Cancel",
             use_container_width=True,
             key="cancel_customer_button",
+            on_click=clear_customer_form,
         )
-
-    # --------------------------------------------------------
-    # CANCEL
-    # --------------------------------------------------------
-
-    if cancel_customer:
-
-        st.session_state["customer_full_name"] = ""
-        st.session_state["customer_phone"] = ""
-        st.session_state["customer_email"] = ""
-        st.session_state["customer_location"] = ""
-
-        st.rerun()
 
     # --------------------------------------------------------
     # SAVE CUSTOMER
